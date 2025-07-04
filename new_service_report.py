@@ -41,9 +41,18 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
-creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+
+# Decode and load credentials from Streamlit Secrets
+key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+service_account_info = json.loads(key_json)
+
+creds = service_account.Credentials.from_service_account_info(
+    service_account_info, scopes=SCOPES
 )
+
+# creds = service_account.Credentials.from_service_account_file(
+#     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+# )
 gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 
