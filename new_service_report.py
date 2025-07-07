@@ -390,6 +390,14 @@ if "vertical_df" in st.session_state:
         "Date of Issue",
         'Status'
     ]
+    
+    sheet3_fields = [
+            "Phone Number",
+            "Customer ID",
+            "Customer Name",
+            "Part ID",
+            "Part ID Description",
+        ]
 
 
     def strip_suffix(field_name: str) -> str:
@@ -403,6 +411,8 @@ if "vertical_df" in st.session_state:
     # Step 2: Prepare field sets
     sheet1_fields_normalized = set(f.strip() for f in sheet1_fields)
     sheet2_fields_normalized = set(f.strip() for f in sheet2_fields)
+    sheet3_fields_normalized = set(f.strip() for f in sheet3_fields)
+
     
     # Step 3: Filter rows for Sheet 1: Fields in sheet1 list + suffix is _x or no suffix
     df_sheet1 = df_ticket[
@@ -416,10 +426,15 @@ if "vertical_df" in st.session_state:
         ((df_ticket["Suffix"] == "_y") | (df_ticket["Suffix"].isna()))
     ].copy()
     
+    df_sheet3 = df_ticket[
+        (df_ticket["Normalized_Field"].isin(sheet3_fields_normalized)) &
+        ((df_ticket["Suffix"] == "_y") | (df_ticket["Suffix"].isna()))
+    ].copy()
+    
     # Step 5: Replace `Fields` with cleaned version for display
     df_sheet1["Fields"] = df_sheet1["Normalized_Field"]
     df_sheet2["Fields"] = df_sheet2["Normalized_Field"]
-
+    df_sheet3["Fields"] = df_sheet3["Normalized_Field"]
 
     def build_display_df(source_df: pd.DataFrame, ticket_id: str) -> pd.DataFrame:
         display_rows = []
@@ -444,6 +459,10 @@ if "vertical_df" in st.session_state:
     # Display Sheet 2
     st.markdown("### 📄 Ticket Details — Solar AC: Customer Helpline")
     st.dataframe(build_display_df(df_sheet2, ticket_id), use_container_width=True)
+    
+    # Display Sheet 3
+    st.markdown("### 📄 Ticket Details — Solar AC: Order Book")
+    st.dataframe(build_display_df(df_sheet3, ticket_id), use_container_width=True)
 
     # ---------- Previous comments ----------
     st.subheader("📝 Previous Comments")
