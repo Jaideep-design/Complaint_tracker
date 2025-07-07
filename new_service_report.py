@@ -268,7 +268,60 @@ if "vertical_df" in st.session_state:
     if not candidate_ids:
         st.sidebar.info("No tickets match the given search criteria.")
         st.stop()
+# ── Recent 5 Tickets Display ──
+    st.subheader("🕔 Recent 5 Tickets")
 
+    # Filter for rows where Created At_x or Created At_y are present
+    created_at_df = vertical_df[
+        vertical_df["Fields"].str.lower().isin(["created at_x", "created at_y"])
+    ].copy()
+
+    # Convert Value column (which holds datetime) to datetime dtype
+    created_at_df["Created At"] = pd.to_datetime(created_at_df["Value"], errors="coerce")
+
+    # Sort by latest date and remove duplicates by Ticket ID to get most recent entry per ticket
+    recent_tickets = (
+        created_at_df.dropna(subset=["Created At", "Ticket ID"])
+        .sort_values("Created At", ascending=False)
+        .drop_duplicates(subset=["Ticket ID"])
+    )
+
+    # Function to extract the first matching field value from a ticket slice
+    def get_field(ticket_slice, field_names):
+        for fname in field_names:
+            match = ticket_slice[ticket_slice["Fields"].str.lower() == fname.lower()]
+            if not match.empty:
+                return match.iloc[0]["Value"]
+        return None
+
+    # Build summary list
+    recent_display = []
+    for _, row in recent_tickets.head(5).iterrows():
+        ticket_id = row["Ticket ID"]
+        created_at = row["Created At"]
+
+        ticket_slice = vertical_df[vertical_df["Ticket ID"] == ticket_id]
+
+        device_no = get_field(ticket_slice, [
+            "Master Controller Serial No.", "Ecozen-Master Controller Serial No."])
+        problem_desc = get_field(ticket_slice, [
+            "Problem description_x", "Problem description_y"
+        ])
+        remark = get_field(ticket_slice, [
+            "Remark", "Remarks"
+        ])
+
+        recent_display.append({
+            "Ticket ID": ticket_id,
+            "Created At": created_at,
+            "Device Number": device_no,
+            "Problem Description": problem_desc,
+            "Remark": remark
+        })
+
+    # Display the final table
+    st.dataframe(pd.DataFrame(recent_display))
+    
     ticket_id = st.sidebar.selectbox("Select Ticket ID", candidate_ids)
 
     # ── Ticket‑specific slice ──
