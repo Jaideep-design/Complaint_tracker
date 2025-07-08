@@ -5,6 +5,8 @@ Added search filters for Customer Name and Device ID.
 Created on Fri Jul  4 15:19:18 2025
 @author: Admin
 """
+import base64
+import json
 import re
 import streamlit as st
 import pandas as pd
