@@ -14,6 +14,8 @@ from datetime import datetime
 import gspread
 from google.oauth2 import service_account
 from typing import Optional
+from collections import Counter
+from google.oauth2.service_account import Credentials
 
 # ───────────────────────── CONFIG ─────────────────────────
 SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e295dd0db.json"
@@ -27,6 +29,7 @@ COMMENTS_SHEET_NAME = "solarac_Comments_log"
 
 SELECTED_COLUMNS_1 = [
     "Ticket ID",
+    "Name",
     "Master Controller Serial No.",
     "Inverter Serial No.",
     "Status",
@@ -36,11 +39,22 @@ SELECTED_COLUMNS_1 = [
     "Mob No.",
     "Issue Resolutions Plan",
     "Site Address",
+    'Serial Number',
+    'Complaint Reg Date',
+    'Resolution Method',
+    'Component',
+    'Problem',
     "Solution",
     "Remarks",
     "Part Type",
     "Part Description",
-    "Part  SAP-ID",
+    'Total Breakdown',
+    '1. AC Serial Number',
+    'No of Solar panel',
+    'Voltage',
+    '1P-Voltage',
+    'Battery Voltage',
+    'Battery Capacity in AH',
     "Service Completion Date",
     "Service Completion Time",
 ]
@@ -50,18 +64,24 @@ SELECTED_COLUMNS_2 = [
     'Created At',
     'Mob No.',
     'Site Address',
+    'Inverter Serial No.',
+    'Issue Resolutions Plan',
+    'Assigned Service Engineer',
+    'Total Breakdown Time(in Days)'
     'Issue Resolutions Plan',
     'Ecozen-Master Controller Serial No.',
-    "Inverter Serial No.",
     "Remark",
     "Problem Description",
     "Date of Issue",
-    'Status'
+    'Status',
+    'Additional Remark'
 ]
 SELECTED_COLUMNS_3 = [
     "Phone Number",
     "Customer ID",
     "Customer Name",
+    'Varient Name',
+    'Remarks (if any)',
     "Part ID",
     "Part ID Description",
 ]
@@ -70,6 +90,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
+
+RENAME_MAP_1 = {
+    "Serial Number": "Serial Number (Used)",
+    "Serial Number_2": "Serial Number (Returned)",
+}
 
 # Decode and load credentials from Streamlit Secrets
 key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
@@ -87,31 +112,70 @@ comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 # %%
 # ───────────────────────── HELPERS ─────────────────────────
 
-def read_selected_columns(sheet_id: str, selected_cols: list[str]) -> pd.DataFrame:
-    """Read a Google Sheet and return only the requested columns (handles dups)."""
+def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
+    """
+    Read selected columns from a Google Sheet, handling duplicate column names.
+    Optionally rename specific duplicates via `rename_duplicates` dict.
 
-    try:
-        data = gc.open_by_key(sheet_id).sheet1.get_all_values()
-        headers = data[0]
-        # make duplicate headers unique
-        seen, unique_headers = {}, []
+    Args:
+        sheet_id (str): Google Sheet ID
+        selected_columns (list): Columns to select (base names)
+        rename_duplicates (dict): Mapping like {"Serial Number_2": "Serial Number (Returned)"}
+    """
+
+    # Decode and load credentials from Streamlit Secrets
+    key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+    service_account_info = json.loads(key_json)
+
+    # Authenticate using decoded credentials
+    creds = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    )
+    gc = gspread.authorize(creds)
+
+    # Get worksheet data
+    worksheet = gc.open_by_key(sheet_id).sheet1
+    data = worksheet.get_all_values()
+
+    # Extract header and data
+    raw_header = data[0]
+    rows = data[1:]
+
+    # Rename duplicate columns
+    def make_unique(headers):
+        counter = Counter()
+        new_headers = []
         for h in headers:
-            cnt = seen.get(h, 0)
-            unique_headers.append(f"{h}_{cnt}" if cnt else h)
-            seen[h] = cnt + 1
-        df = pd.DataFrame(data[1:], columns=unique_headers)
-        existing = [c for c in selected_cols if c in df.columns]
-        return df[existing]
-    except Exception as e:  # noqa: BLE001
-        st.error(f"Error reading sheet {sheet_id}: {e}")
-        return pd.DataFrame(columns=selected_cols)
+            counter[h] += 1
+            if counter[h] > 1:
+                new_headers.append(f"{h}_{counter[h]}")
+            else:
+                new_headers.append(h)
+        return new_headers
 
+    header = make_unique(raw_header)
+
+    # Apply to DataFrame
+    df = pd.DataFrame(rows, columns=header)
+
+    # Keep only selected columns based on base name
+    def base_name(col):
+        return col.split("_")[0] if "_" in col else col
+
+    df = df[[col for col in df.columns if base_name(col) in selected_columns]]
+
+    # Rename duplicates if mapping is provided
+    if rename_duplicates:
+        df.rename(columns=rename_duplicates, inplace=True)
+
+    return df
 
 def process_sheets_and_transform() -> pd.DataFrame:
     """Read, merge, clean, and pivot data from the three Google Sheets."""
 
     # Step 1 – Read sheets
-    df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1)
+    df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
 
@@ -268,7 +332,8 @@ if "vertical_df" in st.session_state:
     if not candidate_ids:
         st.sidebar.info("No tickets match the given search criteria.")
         st.stop()
-# ── Recent 5 Tickets Display ──
+        
+    # ── Recent 5 Tickets Display ──
     st.subheader("🕔 Recent 5 Tickets")
 
     # Filter for rows where Created At_x or Created At_y are present
@@ -321,7 +386,8 @@ if "vertical_df" in st.session_state:
 
     # Display the final table
     st.dataframe(pd.DataFrame(recent_display))
-    
+
+
     ticket_id = st.sidebar.selectbox("Select Ticket ID", candidate_ids)
 
     # ── Ticket‑specific slice ──
@@ -329,16 +395,16 @@ if "vertical_df" in st.session_state:
 
     # ---------- Ticket summary ----------
     def get_value(field_name: str) -> Optional[str]:
-        # Try _y version first
-        row = df_ticket[df_ticket["Fields"] == f"{field_name}_y"]
-        if not row.empty:
-            return row["Value"].values[0]
-    
-        # Then try _x version
+        # Try _x version first
         row = df_ticket[df_ticket["Fields"] == f"{field_name}_x"]
         if not row.empty:
             return row["Value"].values[0]
-    
+        
+        # Then try _y version
+        row = df_ticket[df_ticket["Fields"] == f"{field_name}_y"]
+        if not row.empty:
+            return row["Value"].values[0]    
+        
         # Finally try without suffix
         row = df_ticket[df_ticket["Fields"] == field_name]
         if not row.empty:
@@ -489,6 +555,8 @@ if "vertical_df" in st.session_state:
     df_sheet2["Fields"] = df_sheet2["Normalized_Field"]
     df_sheet3["Fields"] = df_sheet3["Normalized_Field"]
 
+
+
     def build_display_df(source_df: pd.DataFrame, ticket_id: str) -> pd.DataFrame:
         display_rows = []
         for (tid, issue_dt), grp in source_df.groupby(["Ticket ID", "Issue_Date"]):
@@ -518,14 +586,40 @@ if "vertical_df" in st.session_state:
     st.dataframe(build_display_df(df_sheet3, ticket_id), use_container_width=True)
 
     # ---------- Previous comments ----------
+    # st.subheader("📝 Previous Comments")
+    # ticket_comments = comments_df.loc[comments_df["Topic"] == ticket_id]
+
+    # if ticket_comments.empty:
+    #     st.info("No comments yet for this ticket.")
+    # else:
+    #     ticket_comments = ticket_comments.sort_values("Timestamp", ascending=False)
+    #     st.dataframe(ticket_comments, use_container_width=True)
+    
+    
+    def linkify(comment: str) -> str:
+        url_pattern = r'(https?://[^\s]+)'
+        return re.sub(url_pattern, r'[\1](\1)', comment)
+    
     st.subheader("📝 Previous Comments")
     ticket_comments = comments_df.loc[comments_df["Topic"] == ticket_id]
-
+    
     if ticket_comments.empty:
         st.info("No comments yet for this ticket.")
     else:
         ticket_comments = ticket_comments.sort_values("Timestamp", ascending=False)
-        st.dataframe(ticket_comments, use_container_width=True)
+    
+        # Table header
+        col1, col2, col3 = st.columns([1, 2, 6])
+        col1.markdown("**Topic**")
+        col2.markdown("**Timestamp**")
+        col3.markdown("**Comment**")
+    
+        for _, row in ticket_comments.iterrows():
+            col1, col2, col3 = st.columns([1, 2, 6])
+            col1.markdown(row["Topic"])
+            col2.markdown(row["Timestamp"])
+            col3.markdown(linkify(row["Comment"]), unsafe_allow_html=True)
+
 
     # ---------- Add new comment ----------
     new_comment = st.text_area("Add a new comment:")
