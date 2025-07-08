@@ -227,7 +227,7 @@ def process_sheets_and_transform() -> pd.DataFrame:
 
 # ───────────────────────── STREAMLIT UI ─────────────────────────
 st.set_page_config(page_title="Solar AC Complaint Tracker", layout="wide")
-st.title("📊 Complaint History")
+st.title("📊 Recent Complaint Tickets")
 
 # ---------- Refresh ----------
 if st.button("🔄 Refresh & Process Data"):
