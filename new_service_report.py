@@ -332,61 +332,6 @@ if "vertical_df" in st.session_state:
     if not candidate_ids:
         st.sidebar.info("No tickets match the given search criteria.")
         st.stop()
-        
-    # # ── Recent 5 Tickets Display ──
-    # st.subheader("🕔 Recent 5 Tickets")
-
-    # # Filter for rows where Created At_x or Created At_y are present
-    # created_at_df = vertical_df[
-    #     vertical_df["Fields"].str.lower().isin(["created at_x", "created at_y"])
-    # ].copy()
-
-    # # Convert Value column (which holds datetime) to datetime dtype
-    # created_at_df["Created At"] = pd.to_datetime(created_at_df["Value"], errors="coerce")
-
-    # # Sort by latest date and remove duplicates by Ticket ID to get most recent entry per ticket
-    # recent_tickets = (
-    #     created_at_df.dropna(subset=["Created At", "Ticket ID"])
-    #     .sort_values("Created At", ascending=False)
-    #     .drop_duplicates(subset=["Ticket ID"])
-    # )
-
-    # # Function to extract the first matching field value from a ticket slice
-    # def get_field(ticket_slice, field_names):
-    #     for fname in field_names:
-    #         match = ticket_slice[ticket_slice["Fields"].str.lower() == fname.lower()]
-    #         if not match.empty:
-    #             return match.iloc[0]["Value"]
-    #     return None
-
-    # # Build summary list
-    # recent_display = []
-    # for _, row in recent_tickets.head(5).iterrows():
-    #     ticket_id = row["Ticket ID"]
-    #     created_at = row["Created At"]
-
-    #     ticket_slice = vertical_df[vertical_df["Ticket ID"] == ticket_id]
-
-    #     device_no = get_field(ticket_slice, [
-    #         "Master Controller Serial No.", "Ecozen-Master Controller Serial No."])
-    #     problem_desc = get_field(ticket_slice, [
-    #         "Problem description_x", "Problem description_y"
-    #     ])
-    #     remark = get_field(ticket_slice, [
-    #         "Remark", "Remarks"
-    #     ])
-
-    #     recent_display.append({
-    #         "Ticket ID": ticket_id,
-    #         "Created At": created_at,
-    #         "Device Number": device_no,
-    #         "Problem Description": problem_desc,
-    #         "Remark": remark
-    #     })
-
-    # # Display the final table
-    # st.dataframe(pd.DataFrame(recent_display))
-
 
     ticket_id = st.sidebar.selectbox("Select Ticket ID", candidate_ids)
 
@@ -476,112 +421,82 @@ if "vertical_df" in st.session_state:
     # ---------- Separate Vertical Details for Sheet 1 and Sheet 2 ----------
 
     sheet1_fields = [
-        "Ticket ID",
-        "Master Controller Serial No.",
-        "Inverter Serial No.",
-        "Status",
-        "Created At",
-        "Problem",
-        "Problem Description",
-        "Mob No.",
-        "Issue Resolutions Plan",
-        "Site Address",
-        "Solution",
-        "Remarks",
-        "Part Type",
-        "Part Description",
-        "Part  SAP-ID",
-        "Service Completion Date",
-        "Service Completion Time"
+        "Ticket ID", "Name", "Master Controller Serial No.", "Inverter Serial No.",
+        "Status", "Created At", "Problem", "Problem Description", "Mob No.",
+        "Issue Resolutions Plan", "Site Address", "Serial Number", "Complaint Reg Date",
+        "Resolution Method", "Component", "Solution", "Remarks", "Part Type",
+        "Part Description", "Total Breakdown", "1. AC Serial Number", "No of Solar panel",
+        "Voltage", "1P-Voltage", "Battery Voltage", "Battery Capacity in AH",
+        "Service Completion Date", "Service Completion Time",
     ]
-
+    
     sheet2_fields = [
-        "Ticket ID",
-        'Name',
-        'Created At',
-        'Mob No.',
-        'Site Address',
-        'Issue Resolutions Plan',
-        'Ecozen-Master Controller Serial No.',
-        "Inverter Serial No.",
-        "Remark",
-        "Problem Description",
-        "Date of Issue",
-        'Status'
+        "Ticket ID", "Name", "Created At", "Mob No.", "Site Address",
+        "Inverter Serial No.", "Issue Resolutions Plan", "Assigned Service Engineer",
+        "Total Breakdown Time(in Days)", "Ecozen-Master Controller Serial No.",
+        "Remark", "Problem Description", "Date of Issue", "Status", "Additional Remark",
     ]
     
     sheet3_fields = [
-            "Phone Number",
-            "Customer ID",
-            "Customer Name",
-            "Part ID",
-            "Part ID Description",
-        ]
-
-
+        "Phone Number", "Customer ID", "Customer Name", "Part ID", "Part ID Description",
+    ]
+    
     def strip_suffix(field_name: str) -> str:
         """Strip _x or _y suffix from a field name."""
         return re.sub(r"(_x|_y)$", "", field_name).strip()
     
     # Step 1: Create helper columns
-    df_ticket["Suffix"] = df_ticket["Fields"].str.extract(r"(_x|_y)$")[0]  # _x, _y or NaN
+    df_ticket["Suffix"] = df_ticket["Fields"].str.extract(r"(_x|_y)$")[0]
     df_ticket["Normalized_Field"] = df_ticket["Fields"].apply(strip_suffix)
     
     # Step 2: Prepare field sets
     sheet1_fields_normalized = set(f.strip() for f in sheet1_fields)
     sheet2_fields_normalized = set(f.strip() for f in sheet2_fields)
     sheet3_fields_normalized = set(f.strip() for f in sheet3_fields)
-
     
-    # Step 3: Filter rows for Sheet 1: Fields in sheet1 list + suffix is _x or no suffix
+    # Step 3: Filter rows based on suffix explicitly
     df_sheet1 = df_ticket[
         (df_ticket["Normalized_Field"].isin(sheet1_fields_normalized)) &
-        ((df_ticket["Suffix"] == "_x") | (df_ticket["Suffix"].isna()))
+        (df_ticket["Suffix"] == "_x")
     ].copy()
     
-    # Step 4: Filter rows for Sheet 2: Fields in sheet2 list + suffix is _y or no suffix
     df_sheet2 = df_ticket[
         (df_ticket["Normalized_Field"].isin(sheet2_fields_normalized)) &
-        ((df_ticket["Suffix"] == "_y") | (df_ticket["Suffix"].isna()))
+        (df_ticket["Suffix"] == "_y")
     ].copy()
     
+    # Sheet 3 has no suffix constraint
     df_sheet3 = df_ticket[
-        (df_ticket["Normalized_Field"].isin(sheet3_fields_normalized)) &
-        ((df_ticket["Suffix"] == "_y") | (df_ticket["Suffix"].isna()))
+        (df_ticket["Normalized_Field"].isin(sheet3_fields_normalized))
     ].copy()
     
-    # Step 5: Replace `Fields` with cleaned version for display
+    # Step 4: Clean the `Fields` column
     df_sheet1["Fields"] = df_sheet1["Normalized_Field"]
     df_sheet2["Fields"] = df_sheet2["Normalized_Field"]
     df_sheet3["Fields"] = df_sheet3["Normalized_Field"]
-
-
-
+    
+    # ---------- Helper to Build Display Table ----------
     def build_display_df(source_df: pd.DataFrame, ticket_id: str) -> pd.DataFrame:
         display_rows = []
         for (tid, issue_dt), grp in source_df.groupby(["Ticket ID", "Issue_Date"]):
             first = True
             for _, r in grp.iterrows():
-                display_rows.append(
-                    {
-                        "Ticket ID": tid if first else "",
-                        "Issue Date": issue_dt if first else "",
-                        "Fields": r["Fields"],
-                        "Value": r["Value"],
-                    }
-                )
+                display_rows.append({
+                    "Ticket ID": tid if first else "",
+                    "Issue Date": issue_dt if first else "",
+                    "Fields": r["Fields"],
+                    "Value": r["Value"],
+                })
                 first = False
         return pd.DataFrame(display_rows)
-
-    # Display Sheet 1
+    
+    # ---------- Display Outputs ----------
     st.markdown("### 📄 Ticket Details — Solar AC: Service")
     st.dataframe(build_display_df(df_sheet1, ticket_id), use_container_width=True)
-
-    # Display Sheet 2
+    
     st.markdown("### 📄 Ticket Details — Solar AC: Customer Helpline")
     st.dataframe(build_display_df(df_sheet2, ticket_id), use_container_width=True)
     
-    # Display Sheet 3
     st.markdown("### 📄 Ticket Details — Solar AC: Order Book")
     st.dataframe(build_display_df(df_sheet3, ticket_id), use_container_width=True)
 
