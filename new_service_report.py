@@ -457,12 +457,19 @@ if "vertical_df" in st.session_state:
     # Step 3: Filter rows based on suffix explicitly
     df_sheet1 = df_ticket[
         (df_ticket["Normalized_Field"].isin(sheet1_fields_normalized)) &
-        (df_ticket["Suffix"] == "_x")
+        (
+            (df_ticket["Suffix"] == "_x") |
+            (df_ticket["Suffix"].isna())
+        )
     ].copy()
+
     
     df_sheet2 = df_ticket[
         (df_ticket["Normalized_Field"].isin(sheet2_fields_normalized)) &
-        (df_ticket["Suffix"] == "_y")
+        (
+            (df_ticket["Suffix"] == "_y") |
+            (df_ticket["Suffix"].isna())
+        )
     ].copy()
     
     # Sheet 3 has no suffix constraint
