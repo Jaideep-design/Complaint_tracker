@@ -279,9 +279,10 @@ if "vertical_df" in st.session_state:
     st.sidebar.header("🔎 Filters")
     
     # Filter for relevant fields
-    name_df = vertical_df[vertical_df["Fields"].str.lower().isin(["name of customer", "customer name"])]
+    name_df = vertical_df[vertical_df["Fields"].str.lower().isin(["name_x", "customer name", "name_y"])]
     device_df = vertical_df[vertical_df["Fields"].str.lower().isin([
         "master controller serial no.",
+        "ecozen-master controller serial no.",
         "inverter serial no.",
         "device id"
     ])]
@@ -309,7 +310,7 @@ if "vertical_df" in st.session_state:
     # Apply name filter
     if search_name:
         name_mask = (
-            vertical_df["Fields"].str.lower().isin(["name of customer", "customer name"])
+            vertical_df["Fields"].str.lower().isin(["name_x", "customer name", "name_y"])
             & vertical_df["Value"].str.contains(search_name, case=False, na=False)
         )
         candidate_ids &= set(vertical_df.loc[name_mask, "Ticket ID"])
@@ -318,6 +319,7 @@ if "vertical_df" in st.session_state:
     if search_device:
         device_fields = [
             "master controller serial no.",
+            "ecozen-master controller serial no.",
             "inverter serial no.",
             "device id"
         ]
@@ -491,18 +493,23 @@ if "vertical_df" in st.session_state:
     # ---------- Helper to Build Display Table ----------
     def build_display_df(source_df: pd.DataFrame, ticket_id: str) -> pd.DataFrame:
         display_rows = []
-        for (tid, issue_dt), grp in source_df.groupby(["Ticket ID", "Issue_Date"]):
+        
+        # Filter for the given ticket_id
+        df = source_df[source_df['Ticket ID'] == ticket_id]
+    
+        # Group by Issue_Date (including NaN by filling with placeholder)
+        for issue_dt, grp in df.groupby(df['Issue_Date'].fillna('No Issue Date')):
             first = True
             for _, r in grp.iterrows():
                 display_rows.append({
-                    "Ticket ID": tid if first else "",
+                    "Ticket ID": ticket_id if first else "",
                     "Issue Date": issue_dt if first else "",
                     "Fields": r["Fields"],
                     "Value": r["Value"],
                 })
                 first = False
-        return pd.DataFrame(display_rows)
-    
+                
+        return pd.DataFrame(display_rows)    
     # ---------- Display Outputs ----------
     st.markdown("### 📄 Ticket Details — Solar AC: Service")
     st.dataframe(build_display_df(df_sheet1, ticket_id), use_container_width=True)
