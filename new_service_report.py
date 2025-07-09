@@ -423,7 +423,7 @@ if "vertical_df" in st.session_state:
     sheet1_fields = [
         "Ticket ID", "Name", "Master Controller Serial No.", "Inverter Serial No.",
         "Status", "Created At", "Problem", "Problem Description", "Mob No.",
-        "Issue Resolutions Plan", "Site Address", "Serial Number", "Complaint Reg Date",
+        "Issue Resolutions Plan", "Site Address", 'Serial Number (Used)', "Serial Number (Returned)", "Complaint Reg Date",
         "Resolution Method", "Component", "Solution", "Remarks", "Part Type",
         "Part Description", "Total Breakdown", "1. AC Serial Number", "No of Solar panel",
         "Voltage", "1P-Voltage", "Battery Voltage", "Battery Capacity in AH",
@@ -438,7 +438,13 @@ if "vertical_df" in st.session_state:
     ]
     
     sheet3_fields = [
-        "Phone Number", "Customer ID", "Customer Name", "Part ID", "Part ID Description",
+        "Phone Number",
+        "Customer ID",
+        "Customer Name",
+        'Varient Name',
+        'Remarks (if any)',
+        "Part ID",
+        "Part ID Description",
     ]
     
     def strip_suffix(field_name: str) -> str:
