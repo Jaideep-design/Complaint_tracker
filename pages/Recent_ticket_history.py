@@ -247,7 +247,7 @@ if "vertical_df" in st.session_state:
     vertical_df = st.session_state.vertical_df.copy()
              
 # ── Recent 5 Tickets Display ──
-    st.subheader("🕔 Recent 5 Tickets")
+    st.subheader("🕔 Recent 10 Tickets")
 
     # Filter for rows where Created At_x or Created At_y are present
     created_at_df = vertical_df[
@@ -274,7 +274,7 @@ if "vertical_df" in st.session_state:
 
     # Build summary list
     recent_display = []
-    for _, row in recent_tickets.head(5).iterrows():
+    for _, row in recent_tickets.head(10).iterrows():
         ticket_id = row["Ticket ID"]
         created_at = row["Created At"]
 
