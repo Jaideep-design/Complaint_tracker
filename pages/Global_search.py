@@ -94,34 +94,59 @@ RENAME_MAP_1 = {
     "Serial Number_2": "Serial Number (Returned)",
 }
 
-# # Decode and load credentials from Streamlit Secrets
-# key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
-# service_account_info = json.loads(key_json)
+# Decode and load credentials from Streamlit Secrets
+key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+service_account_info = json.loads(key_json)
 
-# creds = service_account.Credentials.from_service_account_info(
-#     service_account_info, scopes=SCOPES
-# )
-
-creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+creds = service_account.Credentials.from_service_account_info(
+    service_account_info, scopes=SCOPES
 )
+
+# creds = service_account.Credentials.from_service_account_file(
+#     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+# )
 
 gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 # %%
 # ───────────────────────── HELPERS ─────────────────────────
+def clean_phone_number(value):
+    if pd.isna(value) or str(value).strip().upper() in ["NA", "", "#ERROR!"]:
+        return None
+
+    # If multiple numbers, take the first
+    first_part = str(value).split(",")[0].strip()
+
+    # Remove all non-digit characters
+    digits = re.sub(r"\D", "", first_part)
+
+    # Handle country code (e.g., 91 or +91)
+    if len(digits) > 10:
+        digits = digits[-10:]  # take last 10 digits
+    
+    return digits if len(digits) == 10 else None
+
+
 def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     """
     Read selected columns from a Google Sheet, handling duplicate column names.
     Optionally rename specific duplicates via `rename_duplicates` dict.
-    
+
     Args:
         sheet_id (str): Google Sheet ID
         selected_columns (list): Columns to select (base names)
         rename_duplicates (dict): Mapping like {"Serial Number_2": "Serial Number (Returned)"}
     """
-    # Authenticate
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+
+    # Decode and load credentials from Streamlit Secrets
+    key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+    service_account_info = json.loads(key_json)
+
+    # Authenticate using decoded credentials
+    creds = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    )
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -132,7 +157,7 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     raw_header = data[0]
     rows = data[1:]
 
-    # Rename duplicates (e.g., Serial Number, Serial Number_2, Serial Number_3, etc.)
+    # Rename duplicate columns
     def make_unique(headers):
         counter = Counter()
         new_headers = []
@@ -149,18 +174,17 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     # Apply to DataFrame
     df = pd.DataFrame(rows, columns=header)
 
-    # Keep only selected columns (based on base name)
+    # Keep only selected columns based on base name
     def base_name(col):
         return col.split("_")[0] if "_" in col else col
 
     df = df[[col for col in df.columns if base_name(col) in selected_columns]]
 
-    # Rename duplicates using custom map (if provided)
+    # Rename duplicates if mapping is provided
     if rename_duplicates:
         df.rename(columns=rename_duplicates, inplace=True)
 
     return df
-
 
 def process_sheets_and_transform() -> pd.DataFrame:
     """Read, merge, clean, and pivot data from the three Google Sheets."""
@@ -168,6 +192,7 @@ def process_sheets_and_transform() -> pd.DataFrame:
     # Step 1 – Read sheets
     df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
+    df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
 
     # Step 2 – Merge Sheet 1 & 2 on "Ticket ID"
@@ -190,10 +215,19 @@ def process_sheets_and_transform() -> pd.DataFrame:
 
     if "Phone Number" in df3.columns:
         df3["Phone Number"] = df3["Phone Number"].str.replace(r"\D", "", regex=True).str[-10:]
+        
+    # df_merged_filtered = df_merged[df_merged["Mob No."].notna()]
 
+    # Filter df3 to only include non-empty, non-NaN phone numbers
+    df3_filtered = df3[df3["Phone Number"].notna() & (df3["Phone Number"].str.strip() != "")]
+    
     # Step 4 – Merge df3 using phone numbers
     df_final = pd.merge(
-        df_merged, df3, left_on="Mob No.", right_on="Phone Number", how="left"
+        df_merged,
+        df3_filtered,
+        left_on="Mob No.",
+        right_on="Phone Number",
+        how="left"
     )
 
     # Drop unwanted columns before pivoting
@@ -222,6 +256,7 @@ def process_sheets_and_transform() -> pd.DataFrame:
     vertical_df = vertical_df.sort_values(["Ticket ID", "Issue_Date", "Fields"])
 
     return vertical_df
+    
 # %%
 # ───────────────────────── STREAMLIT UI ─────────────────────────
 st.set_page_config(page_title="Solar AC Complaint Tracker", layout="wide")
