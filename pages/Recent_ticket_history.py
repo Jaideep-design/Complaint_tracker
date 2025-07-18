@@ -246,25 +246,51 @@ if st.button("🔄 Refresh & Process Data"):
 if "vertical_df" in st.session_state:
     vertical_df = st.session_state.vertical_df.copy()
              
-# ── Recent 5 Tickets Display ──
+    # ── Recent 5 Tickets Display ──
     st.subheader("🕔 Recent 10 Tickets")
 
-    # Filter for rows where Created At_x or Created At_y are present
+    # Filter for rows where 'Fields' is 'created at_x' or 'created at_y'
     created_at_df = vertical_df[
         vertical_df["Fields"].str.lower().isin(["created at_x", "created at_y"])
     ].copy()
+    
+    # Pivot to have 'created at_x' and 'created at_y' as separate columns
+    created_at_pivot = created_at_df.pivot_table(
+        index=[col for col in created_at_df.columns if col not in ['Fields', 'Value']],
+        columns="Fields",
+        values="Value",
+        aggfunc="first"
+    ).reset_index()
 
-    # Convert Value column (which holds datetime) to datetime dtype
-    created_at_df["Created At"] = pd.to_datetime(created_at_df["Value"], errors="coerce")
+    # Safely access columns
+    created_at_x = created_at_pivot.get("Created At_x")
+    created_at_y = created_at_pivot.get("Created At_y")
 
-    # Sort by latest date and remove duplicates by Ticket ID to get most recent entry per ticket
+    # Prefer 'created at_y', else fallback to 'created at_x'
+    if created_at_y is not None and created_at_x is not None:
+        created_at_pivot["Created At"] = pd.to_datetime(
+            created_at_y.combine_first(created_at_x), errors="coerce"
+        )
+    elif created_at_y is not None:
+        created_at_pivot["Created At"] = pd.to_datetime(created_at_y, errors="coerce")
+    elif created_at_x is not None:
+        created_at_pivot["Created At"] = pd.to_datetime(created_at_x, errors="coerce")
+    else:
+        created_at_pivot["Created At"] = pd.NaT
+
+    # Create final DataFrame for recent ticket view
+    final_created_at_df = created_at_pivot[["Created At"] + [
+        col for col in created_at_pivot.columns if col not in ["created at_x", "created at_y", "Created At"]
+    ]]
+
+    # Sort and filter for recent unique tickets
     recent_tickets = (
-        created_at_df.dropna(subset=["Created At", "Ticket ID"])
+        final_created_at_df.dropna(subset=["Created At", "Ticket ID"])
         .sort_values("Created At", ascending=False)
         .drop_duplicates(subset=["Ticket ID"])
     )
 
-    # Function to extract the first matching field value from a ticket slice
+    # Function to extract first matching value for a field
     def get_field(ticket_slice, field_names):
         for fname in field_names:
             match = ticket_slice[ticket_slice["Fields"].str.lower() == fname.lower()]
@@ -283,11 +309,9 @@ if "vertical_df" in st.session_state:
         device_no = get_field(ticket_slice, [
             "Master Controller Serial No.", "Ecozen-Master Controller Serial No."])
         problem_desc = get_field(ticket_slice, [
-            "Problem description_x", "Problem description_y"
-        ])
+            "Problem description_x", "Problem description_y"])
         remark = get_field(ticket_slice, [
-            "Remark", "Remarks"
-        ])
+            "Remark", "Remarks"])
 
         recent_display.append({
             "Ticket ID": ticket_id,
@@ -297,5 +321,5 @@ if "vertical_df" in st.session_state:
             "Remark": remark
         })
 
-    # Display the final table
+    # Display the final DataFrame
     st.dataframe(pd.DataFrame(recent_display))
