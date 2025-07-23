@@ -286,7 +286,7 @@ if "vertical_df" in st.session_state:
     # Apply global keyword filter
     if global_search:
         # Define keywords to identify relevant fields
-        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller"]
+        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller", "serial"]
     
         # Step 1: Identify rows where field names are relevant
         field_mask = vertical_df["Fields"].str.lower().apply(
