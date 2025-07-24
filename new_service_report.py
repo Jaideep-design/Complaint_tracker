@@ -225,6 +225,9 @@ def process_sheets_and_transform() -> pd.DataFrame:
     # Step 1 – Read sheets
     df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
+    
+    df2 = df2[df2["Ticket ID"].notna() & (df2["Ticket ID"].astype(str).str.strip() != "")]
+    
     df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
 
