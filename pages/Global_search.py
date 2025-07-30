@@ -128,7 +128,6 @@ def clean_phone_number(value):
     
     return digits if len(digits) == 10 else None
 
-
 def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     """
     Read selected columns from a Google Sheet, handling duplicate column names.
@@ -187,6 +186,24 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
         df.rename(columns=rename_duplicates, inplace=True)
 
     return df
+
+def load_comments() -> pd.DataFrame:
+    """Fetch the comments sheet as a tidy DataFrame (Topic, Timestamp, Comment)."""
+
+    try:
+        records = comment_ws.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = df.columns.str.strip()
+        if "Ticket ID" in df.columns and "Topic" not in df.columns:
+            df = df.rename(columns={"Ticket ID": "Topic"})
+
+        for col in ["Topic", "Timestamp", "Comment"]:
+            if col not in df.columns:
+                df[col] = None
+        return df[["Topic", "Timestamp", "Comment"]]
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Error reading comments: {e}")
+        return pd.DataFrame(columns=["Topic", "Timestamp", "Comment"])
 
 def process_sheets_and_transform() -> pd.DataFrame:
     """Read, merge, clean, and pivot data from the three Google Sheets."""
@@ -261,7 +278,6 @@ def process_sheets_and_transform() -> pd.DataFrame:
     vertical_df = vertical_df.sort_values(["Ticket ID", "Issue_Date", "Fields"])
 
     return vertical_df
-    
 # %%
 # ───────────────────────── STREAMLIT UI ─────────────────────────
 st.set_page_config(page_title="Solar AC Complaint Tracker", layout="wide")
@@ -280,38 +296,52 @@ if "vertical_df" in st.session_state:
     # ── Sidebar filters ──
     st.sidebar.header("🔎 Filters")
 
+    #---------------------------------------
     # Global search text input
     global_search = st.sidebar.text_input("🔍 Global Search", "")
-    
+
     # Initialize candidate tickets from all available ones
     candidate_ids = set(vertical_df["Ticket ID"].dropna())
 
-    # Apply global keyword filter
+    # Load comments (if not already loaded)
+    comments_df = load_comments()
+
+    # Define function to normalize text
+    def normalize(text):
+        if pd.isna(text):
+            return ""
+        return str(text).lower().replace(" ", "")
+
     if global_search:
         # Define keywords to identify relevant fields
-        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller", "serial", "engineer"]
-    
-        # Step 1: Identify rows where field names are relevant
+        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller", "serial"]
+
+        # Step 1: Identify relevant fields in vertical_df
         field_mask = vertical_df["Fields"].str.lower().apply(
             lambda x: any(keyword in x for keyword in relevant_keywords)
         )
-    
-        # Step 2: Normalize both search term and field values (remove spaces and lowercase)
-        def normalize(text):
-            if pd.isna(text):
-                return ""
-            return text.lower().replace(" ", "")
-    
-        normalized_search = normalize(global_search)
-    
-        value_normalized = vertical_df["Value"].astype(str).apply(normalize)
-        
-        keyword_mask = field_mask & value_normalized.str.contains(normalized_search, na=False)
-    
-        # Step 3: Update candidate ticket IDs
-        candidate_ids &= set(vertical_df.loc[keyword_mask, "Ticket ID"])
 
-        
+        # Step 2: Normalize values and search term
+        normalized_search = normalize(global_search)
+        value_normalized = vertical_df["Value"].astype(str).apply(normalize)
+
+        keyword_mask = field_mask & value_normalized.str.contains(normalized_search, na=False)
+
+        # Step 3: Get ticket IDs from vertical_df
+        ticket_ids_from_fields = set(vertical_df.loc[keyword_mask, "Ticket ID"])
+
+        # Step 4: Check comments_df for matching text in comments
+        if not comments_df.empty:
+            comments_df["Normalized_Comment"] = comments_df["Comment"].astype(str).apply(normalize)
+            comment_mask = comments_df["Normalized_Comment"].str.contains(normalized_search, na=False)
+            ticket_ids_from_comments = set(comments_df.loc[comment_mask, "Topic"])
+        else:
+            ticket_ids_from_comments = set()
+
+        # Step 5: Union both sources of ticket IDs and intersect with existing
+        matched_ids = ticket_ids_from_fields | ticket_ids_from_comments
+        candidate_ids &= matched_ids
+
     candidate_ids = sorted(candidate_ids)
     if not candidate_ids:
         st.sidebar.info("No tickets match the given search criteria.")
@@ -354,5 +384,4 @@ if "vertical_df" in st.session_state:
     
     # Convert to DataFrame and show
     st.dataframe(pd.DataFrame(matching_display))
-
 
