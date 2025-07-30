@@ -5,15 +5,10 @@ Added search filters for Customer Name and Device ID.
 Created on Fri Jul  4 15:19:18 2025
 @author: Admin
 """
-import re
-import base64
-import json
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import gspread
 from google.oauth2 import service_account
-from typing import Optional
 from collections import Counter
 from google.oauth2.service_account import Credentials
 
@@ -96,59 +91,34 @@ RENAME_MAP_1 = {
     "Serial Number_2": "Serial Number (Returned)",
 }
 
-# Decode and load credentials from Streamlit Secrets
-key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
-service_account_info = json.loads(key_json)
+# # Decode and load credentials from Streamlit Secrets
+# key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+# service_account_info = json.loads(key_json)
 
-creds = service_account.Credentials.from_service_account_info(
-    service_account_info, scopes=SCOPES
-)
-
-# creds = service_account.Credentials.from_service_account_file(
-#     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+# creds = service_account.Credentials.from_service_account_info(
+#     service_account_info, scopes=SCOPES
 # )
+
+creds = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
 
 gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 # %%
 # ───────────────────────── HELPERS ─────────────────────────
-def clean_phone_number(value):
-    if pd.isna(value) or str(value).strip().upper() in ["NA", "", "#ERROR!"]:
-        return None
-
-    # If multiple numbers, take the first
-    first_part = str(value).split(",")[0].strip()
-
-    # Remove all non-digit characters
-    digits = re.sub(r"\D", "", first_part)
-
-    # Handle country code (e.g., 91 or +91)
-    if len(digits) > 10:
-        digits = digits[-10:]  # take last 10 digits
-    
-    return digits if len(digits) == 10 else None
-
-
 def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     """
     Read selected columns from a Google Sheet, handling duplicate column names.
     Optionally rename specific duplicates via `rename_duplicates` dict.
-
+    
     Args:
         sheet_id (str): Google Sheet ID
         selected_columns (list): Columns to select (base names)
         rename_duplicates (dict): Mapping like {"Serial Number_2": "Serial Number (Returned)"}
     """
-
-    # Decode and load credentials from Streamlit Secrets
-    key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
-    service_account_info = json.loads(key_json)
-
-    # Authenticate using decoded credentials
-    creds = service_account.Credentials.from_service_account_info(
-        service_account_info,
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
+    # Authenticate
+    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -159,7 +129,7 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     raw_header = data[0]
     rows = data[1:]
 
-    # Rename duplicate columns
+    # Rename duplicates (e.g., Serial Number, Serial Number_2, Serial Number_3, etc.)
     def make_unique(headers):
         counter = Counter()
         new_headers = []
@@ -176,17 +146,35 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     # Apply to DataFrame
     df = pd.DataFrame(rows, columns=header)
 
-    # Keep only selected columns based on base name
+    # Keep only selected columns (based on base name)
     def base_name(col):
         return col.split("_")[0] if "_" in col else col
 
     df = df[[col for col in df.columns if base_name(col) in selected_columns]]
 
-    # Rename duplicates if mapping is provided
+    # Rename duplicates using custom map (if provided)
     if rename_duplicates:
         df.rename(columns=rename_duplicates, inplace=True)
 
     return df
+
+def load_comments() -> pd.DataFrame:
+    """Fetch the comments sheet as a tidy DataFrame (Topic, Timestamp, Comment)."""
+
+    try:
+        records = comment_ws.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = df.columns.str.strip()
+        if "Ticket ID" in df.columns and "Topic" not in df.columns:
+            df = df.rename(columns={"Ticket ID": "Topic"})
+
+        for col in ["Topic", "Timestamp", "Comment"]:
+            if col not in df.columns:
+                df[col] = None
+        return df[["Topic", "Timestamp", "Comment"]]
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Error reading comments: {e}")
+        return pd.DataFrame(columns=["Topic", "Timestamp", "Comment"])
 
 def process_sheets_and_transform() -> pd.DataFrame:
     """Read, merge, clean, and pivot data from the three Google Sheets."""
@@ -194,10 +182,6 @@ def process_sheets_and_transform() -> pd.DataFrame:
     # Step 1 – Read sheets
     df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
-    
-    df2 = df2[df2["Ticket ID"].notna() & (df2["Ticket ID"].astype(str).str.strip() != "")]
-    
-    df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
 
     # Step 2 – Merge Sheet 1 & 2 on "Ticket ID"
@@ -220,19 +204,10 @@ def process_sheets_and_transform() -> pd.DataFrame:
 
     if "Phone Number" in df3.columns:
         df3["Phone Number"] = df3["Phone Number"].str.replace(r"\D", "", regex=True).str[-10:]
-        
-    # df_merged_filtered = df_merged[df_merged["Mob No."].notna()]
 
-    # Filter df3 to only include non-empty, non-NaN phone numbers
-    df3_filtered = df3[df3["Phone Number"].notna() & (df3["Phone Number"].str.strip() != "")]
-    
     # Step 4 – Merge df3 using phone numbers
     df_final = pd.merge(
-        df_merged,
-        df3_filtered,
-        left_on="Mob No.",
-        right_on="Phone Number",
-        how="left"
+        df_merged, df3, left_on="Mob No.", right_on="Phone Number", how="left"
     )
 
     # Drop unwanted columns before pivoting
@@ -261,7 +236,6 @@ def process_sheets_and_transform() -> pd.DataFrame:
     vertical_df = vertical_df.sort_values(["Ticket ID", "Issue_Date", "Fields"])
 
     return vertical_df
-    
 # %%
 # ───────────────────────── STREAMLIT UI ─────────────────────────
 st.set_page_config(page_title="Solar AC Complaint Tracker", layout="wide")
@@ -280,38 +254,52 @@ if "vertical_df" in st.session_state:
     # ── Sidebar filters ──
     st.sidebar.header("🔎 Filters")
 
+    #---------------------------------------
     # Global search text input
     global_search = st.sidebar.text_input("🔍 Global Search", "")
-    
+
     # Initialize candidate tickets from all available ones
     candidate_ids = set(vertical_df["Ticket ID"].dropna())
 
-    # Apply global keyword filter
+    # Load comments (if not already loaded)
+    comments_df = load_comments()
+
+    # Define function to normalize text
+    def normalize(text):
+        if pd.isna(text):
+            return ""
+        return str(text).lower().replace(" ", "")
+
     if global_search:
         # Define keywords to identify relevant fields
-        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller", "serial", "engineer"]
-    
-        # Step 1: Identify rows where field names are relevant
+        relevant_keywords = ["problem", "remark", "issue", "resolutions", "description", "observation", "plan", "name", "controller", "serial"]
+
+        # Step 1: Identify relevant fields in vertical_df
         field_mask = vertical_df["Fields"].str.lower().apply(
             lambda x: any(keyword in x for keyword in relevant_keywords)
         )
-    
-        # Step 2: Normalize both search term and field values (remove spaces and lowercase)
-        def normalize(text):
-            if pd.isna(text):
-                return ""
-            return text.lower().replace(" ", "")
-    
-        normalized_search = normalize(global_search)
-    
-        value_normalized = vertical_df["Value"].astype(str).apply(normalize)
-        
-        keyword_mask = field_mask & value_normalized.str.contains(normalized_search, na=False)
-    
-        # Step 3: Update candidate ticket IDs
-        candidate_ids &= set(vertical_df.loc[keyword_mask, "Ticket ID"])
 
-        
+        # Step 2: Normalize values and search term
+        normalized_search = normalize(global_search)
+        value_normalized = vertical_df["Value"].astype(str).apply(normalize)
+
+        keyword_mask = field_mask & value_normalized.str.contains(normalized_search, na=False)
+
+        # Step 3: Get ticket IDs from vertical_df
+        ticket_ids_from_fields = set(vertical_df.loc[keyword_mask, "Ticket ID"])
+
+        # Step 4: Check comments_df for matching text in comments
+        if not comments_df.empty:
+            comments_df["Normalized_Comment"] = comments_df["Comment"].astype(str).apply(normalize)
+            comment_mask = comments_df["Normalized_Comment"].str.contains(normalized_search, na=False)
+            ticket_ids_from_comments = set(comments_df.loc[comment_mask, "Topic"])
+        else:
+            ticket_ids_from_comments = set()
+
+        # Step 5: Union both sources of ticket IDs and intersect with existing
+        matched_ids = ticket_ids_from_fields | ticket_ids_from_comments
+        candidate_ids &= matched_ids
+
     candidate_ids = sorted(candidate_ids)
     if not candidate_ids:
         st.sidebar.info("No tickets match the given search criteria.")
@@ -354,5 +342,4 @@ if "vertical_df" in st.session_state:
     
     # Convert to DataFrame and show
     st.dataframe(pd.DataFrame(matching_display))
-
 
