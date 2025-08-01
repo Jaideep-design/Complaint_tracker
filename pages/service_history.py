@@ -6,14 +6,14 @@ Created on Fri Jul  4 15:19:18 2025
 @author: Admin
 """
 import re
-import numpy as np
+import base64
+import json
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2 import service_account
 from typing import Optional
-# from streamlit_vis_timeline import st_timeline
 from collections import Counter
 from google.oauth2.service_account import Credentials
 
@@ -123,9 +123,18 @@ RENAME_MAP_1 = {
     "Serial Number_2": "Old/Replaced Part",
 }
 
-creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+# Decode and load credentials from Streamlit Secrets
+key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+service_account_info = json.loads(key_json)
+
+creds = service_account.Credentials.from_service_account_info(
+    service_account_info, scopes=SCOPES
 )
+
+# creds = service_account.Credentials.from_service_account_file(
+#     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+# )
+
 gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 tech_comment_ws = gc.open_by_key(TECH_COMMENTS_SHEET_ID).worksheet(TECH_COMMENTS_SHEET_NAME)
@@ -152,14 +161,22 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     """
     Read selected columns from a Google Sheet, handling duplicate column names.
     Optionally rename specific duplicates via `rename_duplicates` dict.
-    
+
     Args:
         sheet_id (str): Google Sheet ID
         selected_columns (list): Columns to select (base names)
-        rename_duplicates (dict): Mapping like {"Serial Number_2": "Old/Replaced Part"}
+        rename_duplicates (dict): Mapping like {"Serial Number_2": "Serial Number (Returned)"}
     """
-    # Authenticate
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+
+    # Decode and load credentials from Streamlit Secrets
+    key_json = base64.b64decode(st.secrets["gcp_service_account"]["key_b64"]).decode("utf-8")
+    service_account_info = json.loads(key_json)
+
+    # Authenticate using decoded credentials
+    creds = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    )
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -170,7 +187,7 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     raw_header = data[0]
     rows = data[1:]
 
-    # Rename duplicates (e.g., Serial Number, Serial Number_2, Serial Number_3, etc.)
+    # Rename duplicate columns
     def make_unique(headers):
         counter = Counter()
         new_headers = []
@@ -187,18 +204,17 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     # Apply to DataFrame
     df = pd.DataFrame(rows, columns=header)
 
-    # Keep only selected columns (based on base name)
+    # Keep only selected columns based on base name
     def base_name(col):
         return col.split("_")[0] if "_" in col else col
 
     df = df[[col for col in df.columns if base_name(col) in selected_columns]]
 
-    # Rename duplicates using custom map (if provided)
+    # Rename duplicates if mapping is provided
     if rename_duplicates:
         df.rename(columns=rename_duplicates, inplace=True)
 
     return df
-
 
 def process_sheets_and_transform() -> pd.DataFrame:
     """Read, merge, clean, and pivot data from the three Google Sheets."""
