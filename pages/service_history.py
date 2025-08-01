@@ -6,7 +6,7 @@ Created on Fri Jul  4 15:19:18 2025
 @author: Admin
 """
 import re
-import numpy
+import numpy as np
 import base64
 import json
 import streamlit as st
