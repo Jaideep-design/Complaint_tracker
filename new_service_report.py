@@ -18,7 +18,7 @@ from collections import Counter
 from google.oauth2.service_account import Credentials
 
 # ───────────────────────── CONFIG ─────────────────────────
-# SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e295dd0db.json"
+SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e295dd0db.json"
 
 SHEET_ID_1 = "1px_3F6UEjE3hD6UQMoCGThI7X1o9AK4ERfqwfOKlfY4"
 SHEET_ID_2 = "1z1dyhCXHLN3pSZBhRdpmJ3XwvwV9zF7_QJ0qsZRSLzU"
@@ -39,6 +39,7 @@ SELECTED_COLUMNS_1 = [
     "Created At",
     "Problem",
     "Problem Description",
+    "Problem Description(if not mentioned)",
     "Mob No.",
     "Issue Resolutions Plan",
     "Site Address",
@@ -76,6 +77,7 @@ SELECTED_COLUMNS_2 = [
     'Ecozen-Master Controller Serial No.',
     "Remark",
     "Problem Description",
+    "Problem Description(if not mentioned)",
     "Date of Issue",
     'Status',
     'Additional Remark'
@@ -92,7 +94,7 @@ SELECTED_COLUMNS_3 = [
 
 sheet1_fields = [
     "Ticket ID", "Name", "Master Controller Serial No.", "Inverter Serial No.",
-    "Status", "Created At", "Problem", "Problem Description", "Mob No.",
+    "Status", "Created At", "Problem", "Problem Description", "Problem Description(if not mentioned)", "Mob No.",
     "Issue Resolutions Plan", "Site Address", 'New Part', "Old/Replaced Part", "Complaint Reg Date",
     "Resolution Method", "Component", "Solution", "Remarks", "Part Type",
     "Part Description", "Total Breakdown", "1. AC Serial Number", "No of Solar panel",
@@ -104,7 +106,7 @@ sheet2_fields = [
     "Ticket ID", "Name", "Created At", "Mob No.", "Site Address",
     "Inverter Serial No.", "Issue Resolutions Plan", "Assigned Service Engineer",
     "Total Breakdown Time(in Days)", "Ecozen-Master Controller Serial No.",
-    "Remark", "Problem Description", "Date of Issue", "Status", "Additional Remark",
+    "Remark", "Problem Description", "Problem Description(if not mentioned)", "Date of Issue", "Status", "Additional Remark",
 ]
 
 sheet3_fields = [
@@ -180,6 +182,11 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
         service_account_info,
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    
+    # creds = service_account.Credentials.from_service_account_file(
+    #     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    # )
+    
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -670,6 +677,7 @@ if "vertical_df" in st.session_state:
     # st.markdown("---")
     issue_details = {
         "Problem Description (Customer)": get_field_value(df_display2, "Problem Description"),
+        "Problem Description(if not mentioned)(Customer)": get_field_value(df_display2, "Problem Description(if not mentioned)"),
         "Remark (Customer helpline)": get_field_value(df_display2, "Remark"),
         "Issue Resolution Plan": get_field_value(df_display1, "Issue Resolutions Plan"),
     }
@@ -680,6 +688,7 @@ if "vertical_df" in st.session_state:
     # st.markdown("---")
     service_details = {
         "Problem Description (Technician)": get_field_value(df_display1, "Problem Description"),
+        "Problem Description(if not mentioned)(Customer)": get_field_value(df_display1, "Problem Description(if not mentioned)"),
         "Remarks (Technician)": get_field_value(df_display1, "Remarks"),
         "Solution": get_field_value(df_display1, "Solution"),
     }
