@@ -688,7 +688,7 @@ if "vertical_df" in st.session_state:
     # st.markdown("---")
     service_details = {
         "Problem Description (Technician)": get_field_value(df_display1, "Problem Description"),
-        "Problem Description(if not mentioned)(Customer)": get_field_value(df_display1, "Problem Description(if not mentioned)"),
+        "Problem Description(if not mentioned)(Technician)": get_field_value(df_display1, "Problem Description(if not mentioned)"),
         "Remarks (Technician)": get_field_value(df_display1, "Remarks"),
         "Solution": get_field_value(df_display1, "Solution"),
     }
@@ -853,3 +853,4 @@ if "vertical_df" in st.session_state:
             st.warning("Please enter a comment before submitting.")
 else:
     st.info("Click “🔄 Refresh & Process Data” to begin.")
+
