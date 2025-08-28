@@ -23,6 +23,7 @@ SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e29
 SHEET_ID_1 = "1px_3F6UEjE3hD6UQMoCGThI7X1o9AK4ERfqwfOKlfY4"
 SHEET_ID_2 = "1z1dyhCXHLN3pSZBhRdpmJ3XwvwV9zF7_QJ0qsZRSLzU"
 SHEET_ID_3 = "11CBVvoJjfgvAaFsS-3I_sqQxql8n53JfSZA8CGT9mvA"
+SHEET_ID_4 = "1vBT1VxcajVkMQFqCQMCbmxGyggET3dX9RdrNWHvMu80"
 
 COMMENTS_SHEET_ID = "1vqk13WA77LuSl0xzb54ESO6GSUfqiM9dUgdLfnWdaj0"
 COMMENTS_SHEET_NAME = "solarac_Comments_log"
@@ -85,6 +86,17 @@ SELECTED_COLUMNS_3 = [
     "Part ID",
     "Part ID Description",
 ]
+SELECTED_COLUMNS_4 = [
+    "Date of Issue",
+    "Created At",
+    "Customer Name",
+    "Master Controller Serial Number",
+    "Ticket ID",
+    "Problem Description",
+    "Error Code",
+    "Remark",
+    "R&D Diagnostic Support Required"
+]
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -132,6 +144,11 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
         service_account_info,
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    
+    # creds = service_account.Credentials.from_service_account_file(
+    #     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    # )
+    
     gc = gspread.authorize(creds)
 
     # Get worksheet data
