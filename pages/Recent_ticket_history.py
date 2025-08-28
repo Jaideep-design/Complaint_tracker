@@ -124,6 +124,22 @@ gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
 # %%
 # ───────────────────────── HELPERS ─────────────────────────
+def clean_phone_number(value):
+    if pd.isna(value) or str(value).strip().upper() in ["NA", "", "#ERROR!"]:
+        return None
+
+    # If multiple numbers, take the first
+    first_part = str(value).split(",")[0].strip()
+
+    # Remove all non-digit characters
+    digits = re.sub(r"\D", "", first_part)
+
+    # Handle country code (e.g., 91 or +91)
+    if len(digits) > 10:
+        digits = digits[-10:]  # take last 10 digits
+    
+    return digits if len(digits) == 10 else None
+
 def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
     """
     Read selected columns from a Google Sheet, handling duplicate column names.
@@ -194,7 +210,43 @@ def process_sheets_and_transform() -> pd.DataFrame:
     # Step 1 – Read sheets
     df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
+    
+    df2 = df2[df2["Ticket ID"].notna() & (df2["Ticket ID"].astype(str).str.strip() != "")]
+    
+    df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
+
+    # Now safely filter
+    df4 = read_selected_columns(SHEET_ID_4,SELECTED_COLUMNS_4)
+
+    # Make duplicate column names unique by adding suffix _1, _2, etc.
+    df4.columns = pd.Series(df4.columns).mask(
+        df4.columns.duplicated(),
+        df4.columns + '_2'
+    )
+
+    # Fill blanks (NaN or empty string) in Customer Name_2 with values from Customer Name
+    df4["Customer Name_2"] = df4["Customer Name_2"].replace("", None)
+    df4["Customer Name_2"] = df4["Customer Name_2"].fillna(df4["Customer Name"])
+
+    # 1. Drop the original "Customer Name"
+    df4 = df4.drop(columns=["Customer Name"])
+
+    # 2. Rename Customer Name_2 → Name
+    rename_map = {
+        "Customer Name_2": "Name",
+        "Master Controller Serial Number": "Ecozen-Master Controller Serial No.",
+        "Error Code": "Problem Description(if not mentioned)",
+        "R&D Diagnostic Support Required": "RCA required"
+    }
+
+    df4 = df4.rename(columns=rename_map)
+    
+    # Append df_customer_care into df_customer_helpline
+    df2 = pd.concat(
+        [df2, df4],
+        ignore_index=True
+    )
 
     # Step 2 – Merge Sheet 1 & 2 on "Ticket ID"
     df_merged = pd.merge(df1, df2, on="Ticket ID", how="outer")
@@ -216,10 +268,19 @@ def process_sheets_and_transform() -> pd.DataFrame:
 
     if "Phone Number" in df3.columns:
         df3["Phone Number"] = df3["Phone Number"].str.replace(r"\D", "", regex=True).str[-10:]
+        
+    # df_merged_filtered = df_merged[df_merged["Mob No."].notna()]
 
+    # Filter df3 to only include non-empty, non-NaN phone numbers
+    df3_filtered = df3[df3["Phone Number"].notna() & (df3["Phone Number"].str.strip() != "")]
+    
     # Step 4 – Merge df3 using phone numbers
     df_final = pd.merge(
-        df_merged, df3, left_on="Mob No.", right_on="Phone Number", how="left"
+        df_merged,
+        df3_filtered,
+        left_on="Mob No.",
+        right_on="Phone Number",
+        how="left"
     )
 
     # Drop unwanted columns before pivoting
