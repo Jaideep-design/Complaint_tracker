@@ -24,6 +24,7 @@ SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e29
 SHEET_ID_1 = "1px_3F6UEjE3hD6UQMoCGThI7X1o9AK4ERfqwfOKlfY4"
 SHEET_ID_2 = "1z1dyhCXHLN3pSZBhRdpmJ3XwvwV9zF7_QJ0qsZRSLzU"
 SHEET_ID_3 = "11CBVvoJjfgvAaFsS-3I_sqQxql8n53JfSZA8CGT9mvA"
+SHEET_ID_4 = "1vBT1VxcajVkMQFqCQMCbmxGyggET3dX9RdrNWHvMu80"
 
 COMMENTS_SHEET_ID = "1vqk13WA77LuSl0xzb54ESO6GSUfqiM9dUgdLfnWdaj0"
 COMMENTS_SHEET_NAME = "solarac_Comments_log"
@@ -87,6 +88,17 @@ SELECTED_COLUMNS_3 = [
     'Varient Name',
     "Part ID",
     "Part ID Description",
+]
+SELECTED_COLUMNS_4 = [
+    "Date of Issue",
+    "Created At",
+    "Customer Name",
+    "Master Controller Serial Number",
+    "Ticket ID",
+    "Problem Description",
+    "Error Code",
+    "Remark",
+    "R&D Diagnostic Support Required"
 ]
 
 sheet1_fields = [
@@ -178,6 +190,11 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
         service_account_info,
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    
+    # creds = service_account.Credentials.from_service_account_file(
+    #     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    # )
+    
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -228,6 +245,38 @@ def process_sheets_and_transform() -> pd.DataFrame:
     
     df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
+
+    # Now safely filter
+    df4 = read_selected_columns(SHEET_ID_4,SELECTED_COLUMNS_4)
+
+    # Make duplicate column names unique by adding suffix _1, _2, etc.
+    df4.columns = pd.Series(df4.columns).mask(
+        df4.columns.duplicated(),
+        df4.columns + '_2'
+    )
+
+    # Fill blanks (NaN or empty string) in Customer Name_2 with values from Customer Name
+    df4["Customer Name_2"] = df4["Customer Name_2"].replace("", None)
+    df4["Customer Name_2"] = df4["Customer Name_2"].fillna(df4["Customer Name"])
+
+    # 1. Drop the original "Customer Name"
+    df4 = df4.drop(columns=["Customer Name"])
+
+    # 2. Rename Customer Name_2 → Name
+    rename_map = {
+        "Customer Name_2": "Name",
+        "Master Controller Serial Number": "Ecozen-Master Controller Serial No.",
+        "Error Code": "Problem Description(if not mentioned)",
+        "R&D Diagnostic Support Required": "RCA required"
+    }
+
+    df4 = df4.rename(columns=rename_map)
+    
+    # Append df_customer_care into df_customer_helpline
+    df2 = pd.concat(
+        [df2, df4],
+        ignore_index=True
+    )
 
     # Step 2 – Merge Sheet 1 & 2 on "Ticket ID"
     df_merged = pd.merge(df1, df2, on="Ticket ID", how="outer")
