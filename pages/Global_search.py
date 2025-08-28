@@ -23,6 +23,7 @@ SERVICE_ACCOUNT_FILE = r"C:\Users\Admin\Desktop\solar-ac-customer-mapping-905e29
 SHEET_ID_1 = "1px_3F6UEjE3hD6UQMoCGThI7X1o9AK4ERfqwfOKlfY4"
 SHEET_ID_2 = "1z1dyhCXHLN3pSZBhRdpmJ3XwvwV9zF7_QJ0qsZRSLzU"
 SHEET_ID_3 = "11CBVvoJjfgvAaFsS-3I_sqQxql8n53JfSZA8CGT9mvA"
+SHEET_ID_4 = "1vBT1VxcajVkMQFqCQMCbmxGyggET3dX9RdrNWHvMu80"
 
 COMMENTS_SHEET_ID = "1vqk13WA77LuSl0xzb54ESO6GSUfqiM9dUgdLfnWdaj0"
 COMMENTS_SHEET_NAME = "solarac_Comments_log"
@@ -85,6 +86,17 @@ SELECTED_COLUMNS_3 = [
     "Part ID",
     "Part ID Description",
 ]
+SELECTED_COLUMNS_4 = [
+    "Date of Issue",
+    "Created At",
+    "Customer Name",
+    "Master Controller Serial Number",
+    "Ticket ID",
+    "Problem Description",
+    "Error Code",
+    "Remark",
+    "R&D Diagnostic Support Required"
+]
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -102,7 +114,7 @@ service_account_info = json.loads(key_json)
 
 creds = service_account.Credentials.from_service_account_info(
     service_account_info, scopes=SCOPES
-)
+# )
 
 # creds = service_account.Credentials.from_service_account_file(
 #     SERVICE_ACCOUNT_FILE, scopes=SCOPES
@@ -148,6 +160,11 @@ def read_selected_columns(sheet_id, selected_columns, rename_duplicates=None):
         service_account_info,
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    
+    # creds = service_account.Credentials.from_service_account_file(
+    #     SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    # )
+    
     gc = gspread.authorize(creds)
 
     # Get worksheet data
@@ -211,10 +228,6 @@ def process_sheets_and_transform() -> pd.DataFrame:
     # Step 1 – Read sheets
     df1 = read_selected_columns(SHEET_ID_1, SELECTED_COLUMNS_1, rename_duplicates=RENAME_MAP_1)
     df2 = read_selected_columns(SHEET_ID_2, SELECTED_COLUMNS_2)
-    
-    df2 = df2[df2["Ticket ID"].notna() & (df2["Ticket ID"].astype(str).str.strip() != "")]
-    
-    df2["Mob No."] = df2["Mob No."].apply(clean_phone_number)
     df3 = read_selected_columns(SHEET_ID_3, SELECTED_COLUMNS_3)
 
     # Step 2 – Merge Sheet 1 & 2 on "Ticket ID"
@@ -237,19 +250,10 @@ def process_sheets_and_transform() -> pd.DataFrame:
 
     if "Phone Number" in df3.columns:
         df3["Phone Number"] = df3["Phone Number"].str.replace(r"\D", "", regex=True).str[-10:]
-        
-    # df_merged_filtered = df_merged[df_merged["Mob No."].notna()]
 
-    # Filter df3 to only include non-empty, non-NaN phone numbers
-    df3_filtered = df3[df3["Phone Number"].notna() & (df3["Phone Number"].str.strip() != "")]
-    
     # Step 4 – Merge df3 using phone numbers
     df_final = pd.merge(
-        df_merged,
-        df3_filtered,
-        left_on="Mob No.",
-        right_on="Phone Number",
-        how="left"
+        df_merged, df3, left_on="Mob No.", right_on="Phone Number", how="left"
     )
 
     # Drop unwanted columns before pivoting
