@@ -155,7 +155,7 @@ creds = service_account.Credentials.from_service_account_info(
 
 gc = gspread.authorize(creds)
 comment_ws = gc.open_by_key(COMMENTS_SHEET_ID).worksheet(COMMENTS_SHEET_NAME)
-tech_comment_ws = gc.open_by_key(TECH_COMMENTS_SHEET_ID).worksheet(TECH_COMMENTS_SHEET_NAME)
+# tech_comment_ws = gc.open_by_key(TECH_COMMENTS_SHEET_ID).worksheet(TECH_COMMENTS_SHEET_NAME)
 # %%
 # ───────────────────────── HELPERS ─────────────────────────
 def clean_phone_number(value):
@@ -898,4 +898,5 @@ if "vertical_df" in st.session_state:
             st.warning("Please enter a comment before submitting.")
 else:
     st.info("Click “🔄 Refresh & Process Data” to begin.")
+
 
